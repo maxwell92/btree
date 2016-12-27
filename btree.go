@@ -819,3 +819,101 @@ type Int int
 func (a Int) Less(b Item) bool {
 	return a < b.(Int)
 }
+
+const queueMax = 64
+
+// Cursor represents an iterator that can traverse over all items in the tree
+// in sorted order.
+//
+// Changing data while traversing a cursor may result in unexpected items to
+// be returned. You must reposition your cursor after mutating data.
+type Cursor struct {
+	t     *BTree    // base tree
+	pivot Item      // the next pivot
+	queue []Item    // current item queue
+	qlen  int       // number of items in queue
+	qidx  int       // next item index
+	qdir  direction // queue order direction
+}
+
+// Cursor returns a new cursor used to traverse over items in the tree.
+func (t *BTree) Cursor() *Cursor {
+	return &Cursor{t: t, queue: make([]Item, queueMax)}
+}
+
+func (c *Cursor) hydrate(dir direction, skip int) {
+	pivot := c.pivot
+	c.pivot, c.qidx, c.qlen = nil, 0, 0
+	c.qdir = dir
+	iter := func(item Item) bool {
+		if c.qlen == queueMax {
+			c.pivot = item
+			return false
+		}
+		if skip > 0 {
+			skip--
+		} else {
+			c.queue[c.qlen] = item
+			c.qlen++
+		}
+		return true
+	}
+	if pivot == nil {
+		if dir == ascend {
+			c.t.Ascend(iter)
+		} else {
+			c.t.Descend(iter)
+		}
+	} else {
+		if dir == ascend {
+			c.t.AscendGreaterOrEqual(pivot, iter)
+		} else {
+			c.t.DescendLessOrEqual(pivot, iter)
+		}
+	}
+}
+
+func (c *Cursor) step(dir direction, start bool, pivot Item, skip int) Item {
+	if start {
+		c.pivot = pivot
+		c.qlen, c.qidx = 0, 0
+	} else if c.qdir != dir {
+		if c.qidx > 2 {
+			c.qidx--
+			return c.queue[c.qidx-1]
+		}
+		return c.step(dir, true, c.queue[0], c.qidx%2)
+	} else if c.qidx < c.qlen {
+		c.qidx++
+		return c.queue[c.qidx-1]
+	}
+	if c.pivot != nil || start {
+		c.hydrate(dir, skip)
+		return c.step(dir, false, nil, 0)
+	}
+	return nil
+}
+
+// First moves the cursor to the first item in the tree and returns that item.
+func (c *Cursor) First() Item { return c.step(ascend, true, nil, 0) }
+
+// Last moves the cursor to the last item in the tree and returns that item.
+func (c *Cursor) Last() Item { return c.step(descend, true, nil, 0) }
+
+// Next moves the cursor to the next item and returns that item.
+func (c *Cursor) Next() Item { return c.step(ascend, false, nil, 0) }
+
+// Prev moves the cursor to the previous item and returns that item.
+func (c *Cursor) Prev() Item { return c.step(descend, false, nil, 0) }
+
+// SeekAscend moves the cursor to provided item and returns that item.
+// If the item does not exist then the next item is returned.
+func (c *Cursor) SeekAscend(pivot Item) Item {
+	return c.step(ascend, true, pivot, 0)
+}
+
+// SeekDescend moves the cursor to provided item and returns that item.
+// If the item does not exist then the previous item is returned.
+func (c *Cursor) SeekDescend(pivot Item) Item {
+	return c.step(descend, true, pivot, 0)
+}

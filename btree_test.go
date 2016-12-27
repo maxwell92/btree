@@ -687,3 +687,100 @@ func TestCloneConcurrentOperations(t *testing.T) {
 		}
 	}
 }
+
+func TestCursor(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	for x := 0; x < 1000; x++ {
+		n := rand.Int() % 1000
+		tr := New(*btreeDegree)
+
+		for i := Int(0); i < Int(n); i++ {
+			tr.ReplaceOrInsert(i)
+		}
+
+		var i int
+		var c *Cursor
+		// test forward cursor
+		i = 0
+		c = tr.Cursor()
+		for item := c.First(); item != nil; item = c.Next() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i++
+		}
+
+		// test reverse cursor
+		i = n - 1
+		c = tr.Cursor()
+		for item := c.Last(); item != nil; item = c.Prev() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i--
+		}
+
+		// test forward half way and reverse
+		i = 0
+		c = tr.Cursor()
+		for item := c.First(); item != nil; item = c.Next() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i++
+			if i > n/2 {
+				item = c.Prev()
+				i -= 2
+				for ; item != nil; item = c.Prev() {
+					if int(item.(Int)) != i {
+						t.Fatalf("expected '%v', got '%v'", i, item)
+					}
+					i--
+				}
+				break
+			}
+		}
+
+		// test reverse half way and forward
+		i = n - 1
+		c = tr.Cursor()
+		for item := c.Last(); item != nil; item = c.Prev() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i--
+			if i < n/2 {
+				item = c.Next()
+				i += 2
+				for ; item != nil; item = c.Next() {
+					if int(item.(Int)) != i {
+						t.Fatalf("expected '%v', got '%v'", i, item)
+					}
+					i++
+				}
+				break
+			}
+		}
+
+		// seek forward half way
+		i = n / 2
+		c = tr.Cursor()
+		for item := c.SeekAscend(Int(i)); item != nil; item = c.Next() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i++
+		}
+
+		// seek reverse half way
+		i = n / 2
+		c = tr.Cursor()
+		for item := c.SeekDescend(Int(i)); item != nil; item = c.Prev() {
+			if int(item.(Int)) != i {
+				t.Fatalf("expected '%v', got '%v'", i, item)
+			}
+			i--
+		}
+
+	}
+}
